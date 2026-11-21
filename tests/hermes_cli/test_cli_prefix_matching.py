@@ -79,3 +79,23 @@ class TestSlashCommandPrefixMatching:
         mock_help.assert_called_once()
         printed = " ".join(str(c) for c in cli_obj.console.print.call_args_list)
         assert "Ambiguous" not in printed
+
+    def test_mcp_preserves_quoted_case_sensitive_arguments(self):
+        cli_obj = _make_cli()
+        with patch("hermes_cli.mcp_config.mcp_command") as handler:
+            assert cli_obj.process_command('/mcp add "My Server" --url https://example.test/MCP')
+        args = handler.call_args.args[0]
+        assert args.name == "My Server"
+        assert args.url == "https://example.test/MCP"
+        assert args.mcp_action == "add"
+
+    def test_mcp_exit_and_invalid_input_allow_next_command(self):
+        cli_obj = _make_cli()
+        with patch("hermes_cli.mcp_config.mcp_command", side_effect=SystemExit(2)):
+            assert cli_obj.process_command("/mcp list")
+        with patch("hermes_cli.mcp_config.mcp_command") as handler:
+            assert cli_obj.process_command("/mcp add")
+            assert cli_obj.process_command('/mcp add "unterminated')
+            handler.assert_not_called()
+            assert cli_obj.process_command("/mcp list")
+        assert handler.call_args.args[0].mcp_action == "list"

@@ -1444,20 +1444,14 @@ class CLITuiMixin:
         buf.reset(append_to_history=True)
 
     def _tui_enter_inline_command(self, event, text: str, has_images: bool) -> bool:
-        """Run /model, /steer, /bg, /btw directly on the UI thread; True when handled.
+        """Run commands that require the UI thread; True when handled.
 
-        /model needs the prompt_toolkit terminal-handoff helpers of the interactive pickers.
-        /steer, /bg and /btw while the agent runs must not queue through _pending_input: the
-        process loop is blocked inside self.chat(), so they would only run after the foreground
-        turn — turning /steer into a next-turn message (defeating mid-run injection, #34569) and
-        starting the /bg side task after the turn it should run alongside (#75221). The
-        foreground turn is left alone: no interrupt, no steer. agent.steer() is thread-safe.
-
-        Every branch invalidates after reset: process_command() prints through patch_stdout
-        and never invalidates the app, so the just-cleared input area would keep showing the
-        submitted text (looking unsent, inviting a re-submit) until some unrelated redraw.
+        MCP reuses blocking stdin/curses/OAuth code, so route it before the
+        process-loop worker. Its handler reuses the existing parser and business logic.
         """
-        if self._should_handle_model_command_inline(text, has_images=has_images):
+        if text and text.split(maxsplit=1)[0].lower() == "/mcp" and not has_images:
+            self.process_command(text)
+        elif self._should_handle_model_command_inline(text, has_images=has_images):
             if not self.process_command(text):
                 self._should_exit = True
                 if event.app.is_running:

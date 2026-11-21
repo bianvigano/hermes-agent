@@ -308,6 +308,48 @@ class CLICommandsSessionToolsMixin:
         _say_block(f"  {_t('profile.profile', profile=reply.data['profile'])}",
                    f"  {_t('profile.home', home=reply.data['home'])}")
 
+    def _handle_mcp_command(self, cmd: str) -> None:
+        """Reuse the MCP CLI, lending it stdin while prompt_toolkit is suspended."""
+        import asyncio
+        from hermes_cli.mcp_config import mcp_command
+        from hermes_cli.subcommands.mcp import build_mcp_parser
+
+        def run():
+            try:
+                tokens = shlex.split(_command_arg(cmd))
+            except ValueError as exc:
+                print(f"  /mcp: {exc}")
+                return
+            parser = argparse.ArgumentParser(prog="", add_help=False)
+            build_mcp_parser(parser.add_subparsers(), cmd_mcp=mcp_command)
+            try:
+                args = parser.parse_args(["mcp", *tokens])
+                mcp_command(args)
+                if args.mcp_action not in ("catalog", "list", "ls", "test"):
+                    print("  Run /reload-mcp to apply configuration changes to this session.")
+            except SystemExit:
+                pass  # argparse/help and MCP failures must never exit the REPL.
+            except (KeyboardInterrupt, EOFError):
+                print("  /mcp cancelled.")
+
+        app = getattr(self, "_app", None)
+        if app is None or not app.is_running:
+            run()
+            return
+
+        from prompt_toolkit.application import run_in_terminal
+
+        async def in_terminal():
+            await run_in_terminal(run, in_executor=True)
+
+        # Slash commands run on the REPL worker; suspend stdin on its owning UI loop.
+        import threading
+        if threading.current_thread() is threading.main_thread():
+            app.create_background_task(in_terminal())
+        else:
+            app.context.copy().run(
+                asyncio.run_coroutine_threadsafe, in_terminal(), app.loop).result()
+
 
 def _stop_background_work() -> None:
     """``/stop``'s cleanup: kill the background processes, then interrupt the background (async)

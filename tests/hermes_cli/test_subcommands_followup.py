@@ -35,3 +35,18 @@ def test_mcp_and_acp_accept_hooks_flag():
     # acp takes --accept-hooks at top level
     ns = parser.parse_args(["acp", "--accept-hooks"])
     assert ns.accept_hooks is True
+
+def test_mcp_add_parser_preserves_top_level_command():
+    parser = argparse.ArgumentParser(prog="hermes")
+    sub = parser.add_subparsers(dest="command")
+    handler = _h("mcp")
+    build_mcp_parser(sub, cmd_mcp=handler)
+
+    ns = parser.parse_args(["mcp", "add", "local", "--command", "npx", "--args", "-y", "server"])
+
+    assert ns.func is handler
+    assert ns.command == "mcp"
+    assert ns.mcp_action == "add"
+    assert ns.name == "local"
+    assert ns.mcp_command == "npx"
+    assert ns.args == ["-y", "server"]
