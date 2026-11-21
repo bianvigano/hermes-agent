@@ -338,9 +338,18 @@ class CLICommandsSessionToolsMixin:
             return
 
         from prompt_toolkit.application import run_in_terminal
+        import sys
+        from contextlib import redirect_stderr
+
+        def run_with_terminal_output():
+            # Bypass patch_stdout's escaping and queued flushes while MCP owns the terminal.
+            stdout = getattr(sys.stdout, "original_stdout", sys.stdout)
+            stderr = getattr(sys.stderr, "original_stdout", sys.stderr)
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                run()
 
         async def in_terminal():
-            await run_in_terminal(run, in_executor=True)
+            await run_in_terminal(run_with_terminal_output, in_executor=True)
 
         # Slash commands run on the REPL worker; suspend stdin on its owning UI loop.
         import threading

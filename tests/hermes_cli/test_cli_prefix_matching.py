@@ -99,3 +99,25 @@ class TestSlashCommandPrefixMatching:
             handler.assert_not_called()
             assert cli_obj.process_command("/mcp list")
         assert handler.call_args.args[0].mcp_action == "list"
+
+    def test_mcp_preserves_ansi_output_while_prompt_toolkit_is_active(self):
+        import asyncio
+        import io
+        from types import SimpleNamespace
+
+        cli_obj = _make_cli()
+        app = MagicMock(is_running=True)
+        cli_obj._app = app
+        terminal = io.StringIO()
+        proxy = SimpleNamespace(original_stdout=terminal)
+
+        async def fake_run_in_terminal(func, **_kwargs):
+            func()
+
+        app.create_background_task.side_effect = asyncio.run
+        with patch("hermes_cli.mcp_config.mcp_command",
+                   side_effect=lambda _args: print("\x1b[36mMCP Servers:\x1b[0m")), \
+             patch("sys.stdout", proxy), patch("sys.stderr", proxy), \
+             patch("prompt_toolkit.application.run_in_terminal", fake_run_in_terminal):
+            cli_obj._handle_mcp_command("/mcp list")
+        assert terminal.getvalue() == "\x1b[36mMCP Servers:\x1b[0m\n"
